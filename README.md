@@ -4,8 +4,6 @@ En este documento se detallan asos de prueba diseñados para testear el correcto
 
 Las instrucciones testeadas de momento son: `LUI` (mediante `ORI/H`), `ORI`, `XOR`, `NOR`, `ADD`, `SUB`, `SRA`, `SW`, `SB`, `LHU`, `BEQ`, `BGT`, `SLTI`, `J`, `JR`.
 
-Para cada caso se provee la lógica en ensamblador, la traducción exacta a código máquina hexadecimal (respetando la codificación de formatos R, I, L y J de STX4) y los comandos de Telnet para inyectar en el debugger virtual de la `rtm32`.
-
 ---
 
 # Caso 1: Carga de Constantes y Enmascaramiento Lógico
