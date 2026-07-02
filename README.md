@@ -443,3 +443,61 @@ set [0x00000010] 0x03E00014
 
 ## Conclusiones:
 Anduvo impecable. Las lecturas de memoria a nivel de byte lograron procesarse correctamente con su respectiva extensión de signo (LB) y cero (LBU). Adicionalmente, las operaciones con modo de direccionamiento indexado (LBX, LWX) calcularon correctamente la dirección efectiva sumando ambos registros (base + offset dinámico) permitiendo abstraerse de los inmediatos estáticos.
+
+# Caso 14: Registros Especiales (NO ANDA) 
+## Descripción: Qué estoy testeando
+Se testea el acceso de lectura y escritura a los registros especiales de la CPU, como el `$ecr` o `$psw`, utilizando las instrucciones dedicadas `CFS` y `CTS`.
+## Instrucciones: instrucciones que usé durante el test
+`CTS` (Copy To Special), `CFS` (Copy From Special)
+
+## Precondiciones:
+- Reiniciar el simulador (`reset` -> `set pc 0`).
+- Setear `$10` con `0x12345678`: `set r10 0x12345678`.
+- Setear `$11` con `0x00000000`: `set r11 0x00000000`.
+
+**Code:**
+```bash
+reset
+set pc 0x00000000
+set r10 0x12345678
+set r11 0x00000000
+set [0x00000000] 0x02800087
+set [0x00000004] 0x02C00086
+```
+
+## Postcondiciones:
+- Avanzar con `step 2`.
+- Revisar el estado de la CPU. De funcionar correctamente, `$11` debería valer `0x12345678`.
+
+## Conclusiones:
+Fallo.
+Al ejecutar `CTS` y `CFS`, la máquina no levanta ninguna excepción de Instrucción Ilegal (CAUSE 3) pero tampoco realiza la transferencia de datos (el registro destino `$11` mantiene su valor `0x00000000`), comportándose efectivamente como instrucciones vacías (NOPs).
+
+---
+
+# Caso 15: Excepciones y Retornos (NO ANDA)
+## Descripción: Qué estoy testeando
+Se testea la capacidad del procesador para levantar una excepción manual (`TRAP`), guardar el estado (`EPC = PC + 4`) y saltar a la tabla de vectores, así como retornar exitosamente al programa principal mediante la instrucción de retorno de excepción (`RFT`).
+## Instrucciones: instrucciones que usé durante el test
+`TRAP`, `RFT` (Return From Trap)
+
+## Precondiciones:
+- Reiniciar el simulador (`reset` -> `set pc 0`).
+
+**Code:**
+```bash
+reset
+set pc 0x00000000
+set [0x00000000] 0x10000002
+set [0x00000004] 0x00000800
+set [0x00000008] 0x000000A0
+set [0x00000800] 0x00000021
+```
+
+## Postcondiciones:
+- Avanzar con `step 3`.
+- Revisar el estado de la CPU. El `$pc` debería valer `0x0000000C`.
+
+## Conclusiones:
+Fallo. Al igual que con los registros especiales, se corroboró que el procesador ignora por completo la instrucción de excepción (TRAP). En lugar de resguardar el contexto (`EPC`) y saltar al vector de la dirección `0x0800`, el `PC` simplemente continuó de largo hacia las siguientes direcciones de memoria sin levantar errores ni excepciones.
+
