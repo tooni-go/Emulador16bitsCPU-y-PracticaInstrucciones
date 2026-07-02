@@ -2,8 +2,6 @@
 
 En este documento se detallan asos de prueba diseñados para testear el correcto funcionamiento de las instrucciones de la arquitectura de la CPU STX4. Se agruparon instrucciones complementarias en cada caso para verificar no solo el funcionamiento aislado, sino también la interacción entre la ALU, los registros y la memoria.
 
-Las instrucciones testeadas de momento son: `LUI`, `ORI`, `XOR`, `NOR`, `ADD`, `SUB`, `SRA`, `SW`, `SB`, `LHU`, `BEQ`, `BGT`, `SLTI`, `J`, `JR`.
-
 ---
 
 # Caso 1: Carga de Constantes y Enmascaramiento Lógico
@@ -52,7 +50,7 @@ Se testea la correcta generación y manipulación de números negativos en compl
 - Setear en el debugger el registro `$10` ($t2) con el valor `4`: `set r10 0x00000004`.
 - Setear en el debugger el registro `$11` ($t3) con el valor `0` (o usar `$0`).
 
-**Comandos del Debugger (Telnet):**
+**Code:**
 ```bash
 reset
 set pc 0x00000000
@@ -84,7 +82,7 @@ Se testea la escritura de datos de 32 bits a memoria (Store Word), sobreescritur
 - Setear el dato original de 32 bits en `$16`: `set r16 0x11223344`.
 - Setear el byte a sobreescribir en `$17`: `set r17 0x000000FF`.
 
-**Comandos del Debugger (Telnet):**
+**Code:**
 ```bash
 reset
 set pc 0x00000000
@@ -152,7 +150,7 @@ Se testea el mecanismo de llamada a subrutinas y retorno. Al ejecutar un salto c
 - Reiniciar el simulador y acomodar el PC en 0 (`reset` -> `set pc 0x00000000`).
 - El código principal se cargará en `0x00000000` y la subrutina se ubicará lejos en memoria, en `0x00000800`.
 
-**Comandos del Debugger (Telnet):**
+**Code:**
 ```bash
 reset
 set pc 0x00000000
@@ -179,7 +177,7 @@ Se testean las operaciones aritméticas complejas de la ALU.
 - Setear `$10` con el valor `20` (`0x00000014`): `set r10 0x00000014`.
 - Setear `$11` con el valor `3` (`0x00000003`): `set r11 0x00000003`.
 
-**Comandos del Debugger (Telnet):**
+**Code:**
 ```bash
 reset
 set pc 0x00000000
@@ -209,7 +207,7 @@ Se testea el almacenamiento y carga en memoria limitados a 16 bits (`Half Words`
 - Base de memoria `$15` en `0x00000800`.
 - Dato de prueba `$16` con el valor `0x8899AABB`.
 
-**Comandos del Debugger (Telnet):**
+**Code:**
 ```bash
 reset
 set pc 0x00000000
@@ -242,7 +240,7 @@ Se testean comparaciones entre dos registros y la resolución de las operaciones
 - Setear `$10` con `-1` (`0xFFFFFFFF`): `set r10 0xFFFFFFFF`.
 - Setear `$11` con `10` (`0x0000000A`): `set r11 0x0000000A`.
 
-**Comandos del Debugger (Telnet):**
+**Code:**
 ```bash
 reset
 set pc 0x00000000
@@ -261,3 +259,180 @@ set [0x0000000C] 0x0296F009
   - `$13` debe valer `0`
   - `$14` debe valer `0x0000000A`
   - `$15` debe valer `0xFFFFFFFF`
+
+Conclusiones:
+Funciona. El test validó que la ALU del simulador responde de manera exacta a las instrucciones Tipo R (Opcode 0) usando el campo func.Por un lado, se comprobó el manejo de datos con y sin signo: SLT entendió que -1 (0xFFFFFFFF) es menor que 10, dando verdadero (12=1). En cambio, SLTU los comparó como valores sin signo (2^32−1>10), dando falso (13=0).Por el otro, las operaciones lógicas bit a bit corrieron impecable: AND aplicó la máscara de bits aislando el 10, y OR saturó el registro manteniendo el -1 (0xFFFFFFFF). Todo se consolidó en el banco de registros sin fallas en el procesador.
+
+---
+
+# Caso 9: Aritmética y Lógica con Inmediatos
+## Descripción: Qué estoy testeando
+Se testean las operaciones combinadas con inmediatos (tanto aritméticas como lógicas) para evaluar el formato I, el formato L y las distintas extensiones que realiza la CPU de forma simultánea. 
+## Instrucciones: instrucciones que usé durante el test
+`ADD` (Add), `ANDI` (And Immediate), `XORI` (Exclusive Or Immediate), `SLTIU` (Set Less Than Immediate Unsigned)
+
+## Precondiciones:
+- Reiniciar el simulador (`reset` -> `set pc 0`).
+- Setear `$10` con `10` (`0x0000000A`): `set r10 0x0000000A`.
+- Setear `$11` con `20` (`0x00000014`): `set r11 0x00000014`.
+
+**Code:**
+```bash
+reset
+set pc 0x00000000
+set r10 0x0000000A
+set r11 0x00000014
+set [0x00000000] 0x0296C01C
+set [0x00000004] 0x231A000F
+set [0x00000008] 0x335C00FF
+set [0x0000000C] 0xBB9E0100
+```
+
+## Postcondiciones:
+- Avanzar la CPU con `step 4`.
+- Revisar registros:
+  - `$12` debe valer `0x0000001E` (30)
+  - `$13` debe valer `0x0000000E` (14)
+  - `$14` debe valer `0x000000F1` (241)
+  - `$15` debe valer `1`
+
+## Conclusiones:
+Anduvo sin problemas. Las instrucciones inmediatas lógicas (ANDI, XORI) extienden por ceros como se espera, evitando arrastrar signos, y la instrucción SLTIU compara correctamente considerando los números como unsigned, confirmando la decodificación exitosa del formato I y L.
+
+---
+
+# Caso 10: Desplazamientos Dinámicos (Variable Shifts)
+## Descripción: Qué estoy testeando
+Se testean los desplazamientos a nivel de bit pero utilizando el valor dinámico proveniente de un registro fuente en lugar de un inmediato constante. 
+## Instrucciones: instrucciones que usé durante el test
+`SLLR` (Shift Left Logical Variable), `SRLR` (Shift Right Logical Variable), `SRAR` (Shift Right Arithmetic Variable)
+
+## Precondiciones:
+- Reiniciar el simulador (`reset` -> `set pc 0`).
+- Setear la cantidad de desplazamiento en `$10` con `4`: `set r10 0x00000004`.
+- Setear el dato a desplazar en `$11` con `0x80000008`: `set r11 0x80000008`.
+
+**Code:**
+```bash
+reset
+set pc 0x00000000
+set r10 0x00000004
+set r11 0x80000008
+set [0x00000000] 0x0296C003
+set [0x00000004] 0x0296D004
+set [0x00000008] 0x0296E005
+```
+## Postcondiciones:
+- Avanzar con `step 3`.
+- Revisar registros:
+  - `$12` debe valer `0x00000080`
+  - `$13` debe valer `0x08000000` (se metió un cero a la izquierda)
+  - `$14` debe valer `0xF8000000` (se propagó el 1 del signo)
+
+## Conclusiones:
+Anduvo perfecto. Las instrucciones SLLR, SRLR y SRAR responden correctamente capturando los 5 bits menos significativos del registro especificado y aplicando los corrimientos estipulados sin pérdida de información, probando el control de los shifters dinámicos.
+
+---
+
+# Caso 11: Multiplicación y División Unsigned / High
+## Descripción: Qué estoy testeando
+Se testea el acceso a la parte alta (`High`) del resultado de la multiplicación y la división aritmética considerando los operandos estrictamente sin signo.
+## Instrucciones: instrucciones que usé durante el test
+`MULHU` (Multiply High Unsigned), `DIVU` (Divide Unsigned), `RESTU` (Remainder Unsigned)
+
+## Precondiciones:
+- Reiniciar el simulador (`reset` -> `set pc 0`).
+- Setear `$10` con `0xFFFFFFFF` (4294967295): `set r10 0xFFFFFFFF`.
+- Setear `$11` con `2`: `set r11 0x00000002`.
+
+**Code:**
+```bash
+reset
+set pc 0x00000000
+set r10 0xFFFFFFFF
+set r11 0x00000002
+set [0x00000000] 0x0296D017
+set [0x00000004] 0x0296E019
+set [0x00000008] 0x0296F01B
+```
+## Postcondiciones:
+- Avanzar con `step 3`.
+- Revisar registros:
+  - `$13` debe valer `1` (el carry-over o high part de la multiplicación de 64 bits)
+  - `$14` debe valer `0x7FFFFFFF`
+  - `$15` debe valer `1`
+
+## Conclusiones:
+Anduvo sin problemas. Las instrucciones inmediatas lógicas (ANDI, XORI) extienden por ceros como se espera, evitando arrastrar signos, y la instrucción SLTIU compara correctamente considerando los números como unsigned, confirmando la decodificación exitosa del formato I y L.
+
+---
+
+# Caso 12: Condiciones de Salto Faltantes
+## Descripción: Qué estoy testeando
+Se testean todas las lógicas de bifurcación de formato I que no probamos anteriormente. Comprobaremos si saltan o no esquivando incrementos de registros.
+## Instrucciones: instrucciones que usé durante el test
+`BNE` (Branch Not Equal), `BLT` (Branch Less Than), `BLE` (Branch Less or Equal), `BGE` (Branch Greater or Equal)
+
+## Precondiciones:
+- Reiniciar el simulador (`reset` -> `set pc 0`).
+- Setear `$10` con `5`: `set r10 0x00000005`.
+- Setear `$11` con `10`: `set r11 0x0000000A`.
+- Setear `$12` con `5`: `set r12 0x00000005`.
+
+**Code:**
+```bash
+reset
+set pc 0x00000000
+set r10 0x00000005
+set r11 0x0000000A
+set r12 0x00000005
+set [0x00000000] 0x8A960001
+set [0x00000004] 0x081A0001
+set [0x00000008] 0x92D40001
+set [0x0000000C] 0x081C0001
+set [0x00000010] 0xA2980001
+set [0x00000014] 0x081E0001
+set [0x00000018] 0xAA960001
+set [0x0000001C] 0x08200001
+```
+## Conclusiones:
+Resultados positivos. La avalancha de saltos demostró que el comparador para las bifurcaciones BNE, BLT, BLE y BGE funciona con precisión al evaluar las distintas condiciones, ignorando la ejecución cuando la condición es falsa y tomando el branch mediante el cálculo PC=PC+4+offset cuando es verdadera.
+
+---
+
+# Caso 13: Cargas de Bytes y Direccionamiento Indexado
+## Descripción: Qué estoy testeando
+Se testean las cargas de bytes (signada vs no signada) y las instrucciones indexadas (terminadas en X) las cuales utilizan el contenido de dos registros que suman para conformar la dirección de memoria.
+## Instrucciones: instrucciones que usé durante el test
+`LB` (Load Byte), `LBU` (Load Byte Unsigned), `LBX` (Load Byte Indexed), `LWX` (Load Word Indexed)
+
+## Precondiciones:
+- Reiniciar el simulador (`reset` -> `set pc 0`).
+- Puntero base `$15` en `0x0800`: `set r15 0x00000800`.
+- Dato de prueba `$10` con `0x8899AABB`: `set r10 0x8899AABB`.
+- Indice de memoria `$14` con `2`: `set r14 0x00000002`.
+
+**Code:**
+```bash
+reset
+set pc 0x00000000
+set r15 0x00000800
+set r10 0x8899AABB
+set r14 0x00000002
+set [0x00000000] 0x4BD40000
+set [0x00000004] 0x73D60000
+set [0x00000008] 0x7BD80000
+set [0x0000000C] 0x03DCD012
+set [0x00000010] 0x03E00014
+```
+
+## Postcondiciones:
+- Avanzar con `step 5`.
+- Revisar registros:
+  - `$11` debe ser `0xFFFFFFBB`
+  - `$12` debe ser `0x000000BB`
+  - `$13` debe ser `0xFFFFFF99` 
+  - `$16` debe ser `0x8899AABB`
+
+## Conclusiones:
+Anduvo impecable. Las lecturas de memoria a nivel de byte lograron procesarse correctamente con su respectiva extensión de signo (LB) y cero (LBU). Adicionalmente, las operaciones con modo de direccionamiento indexado (LBX, LWX) calcularon correctamente la dirección efectiva sumando ambos registros (base + offset dinámico) permitiendo abstraerse de los inmediatos estáticos.
