@@ -138,6 +138,7 @@ set [0x00000400] 0x0500000E
 
 ## Conclusiones: 
 Anduvo sin problemas. La resolución de los saltos relativos en instrucciones tipo I (`BGT`, `BEQ`) funcionan correctamente como offsets de palabras y no de bytes. El salto `J` dividió bien la dirección destino para ajustarse al formato de palabra, y el salto mediante registro `JR` permitió transferir el control a un espacio arbitrario validando los modos de direccionamiento. Aquí integramos nuevamente el `ADDI` gracias a que el bug fue solucionado.
+
 ---
 
 # Caso 5: Subrutinas y Saltos con Enlace (Function Calls)
@@ -163,6 +164,9 @@ set [0x00000800] 0x07C0000F
 - Esto ejecutará: 1) El JAL a la subrutina, 2) El JALR devolviendo el control al main, 3) El J final.
 - Chequear el `$pc`: debería terminar en `0x00000C00`.
 - Chequear el registro `$31`: debe valer `0x00000004` (la dirección de retorno guardada por el JAL).
+
+## Conclusiones:
+Funcionó excelente. El salto con enlace (`JAL`) guardó exitosamente la dirección de retorno (`PC + 4`) en `$31` y saltó a la subrutina. Luego, el retorno con `JALR` leyó correctamente ese registro y devolvió el control al programa principal sin problemas, demostrando que el hardware para el manejo de subrutinas está en orden.
 
 ---
 
@@ -193,6 +197,9 @@ set [0x00000008] 0x0316E01A
   - `$12` debe valer `0x0000003C` (60)
   - `$13` debe valer `0x00000003` (3)
   - `$14` debe valer `0x00000000` (0)
+
+## Conclusiones:
+Todo perfecto. Las operaciones aritméticas complejas de la ALU demostraron funcionar correctamente. La multiplicación calculó el producto de forma precisa, y tanto la división como el resto aislaron sus respectivos resultados matemáticos sin sobreescribir ni arrastrar bits extraños entre los registros involucrados.
 
 ---
 
