@@ -1,6 +1,8 @@
-# Trabajo Práctico: Testeo de Instrucciones STX4
+# Trabajo Práctico: Testeo de Instrucciones RTM32
 
 En este documento se detallan casos de prueba diseñados para testear el correcto funcionamiento de las instrucciones de la arquitectura de la CPU STX4. Se agruparon instrucciones complementarias en cada caso para verificar no solo el funcionamiento aislado, sino también la interacción entre la ALU, los registros y la memoria.
+
+Para cada caso se provee la lógica en ensamblador, la traducción exacta a código máquina hexadecimal (respetando la codificación de formatos R, I, L y J de STX4) y los comandos de Telnet para inyectar en el debugger virtual de la `rtm32`.
 
 ---
 
@@ -27,6 +29,24 @@ set [0x00000008] 0x0298B00A
 set [0x0000000C] 0x02C0D00B
 ```
 
+## Code
+**Ensamblador MIPS/STX4:**
+```mips
+LUI  $10, 0x00FF        # Carga 0x00FF en la parte alta de $10. $10 = 0x00FF0000
+ORI $10, $10, 0xAA55    # Hace OR con la parte baja (h=0). $10 = 0x00FFAA55
+XOR $11, $10, $12       # $11 = 0x00FFAA55 XOR 0xFFFFFFFF = 0xFF0055AA
+NOR $13, $11, $0        # Niega $11 haciendo NOR con $zero. $13 = 0x00FFAA55
+```
+
+**Tabla de Referencia (Código Máquina):**
+```text
+Dirección  : Código Hex  # Mnemónico Traducido
+0x00000000 : 0x381400FF  # LUI $10, 0x00FF       (Opcode 7, rt=10, imm=0xFF)
+0x00000004 : 0x2A94AA55  # ORI $10, $10, 0xAA55  (Opcode 5, rs=10, rt=10, h=0, imm=0xAA55)
+0x00000008 : 0x0298B00A  # XOR $11, $10, $12     (Opcode 0, rs=10, rt=12, rd=11, func=10)
+0x0000000C : 0x02C0D00B  # NOR $13, $11, $0      (Opcode 0, rs=11, rt=0, rd=13, func=11)
+```
+
 ## Postcondiciones:
 - Avanzar 4 ciclos en la CPU usando `step 4`.
 - Ejecutar el comando `registers` para volcar el estado del procesador.
@@ -50,7 +70,7 @@ Se testea la correcta generación y manipulación de números negativos en compl
 - Setear en el debugger el registro `$10` ($t2) con el valor `4`: `set r10 0x00000004`.
 - Setear en el debugger el registro `$11` ($t3) con el valor `0` (o usar `$0`).
 
-**Code:**
+**Comandos del Debugger (Telnet):**
 ```bash
 reset
 set pc 0x00000000
@@ -59,6 +79,23 @@ set [0x00000000] 0x0014C01D
 set [0x00000004] 0x0B1A000A
 set [0x00000008] 0x0018E082
 ```
+
+## Code
+**Ensamblador MIPS/STX4:**
+```mips
+SUB  $12, $0, $10       # $12 = $0 - $10 (0 - 4 = -4 o 0xFFFFFFFC)
+ADDI $13, $12, 10       # $13 = -4 + 10 = 6
+SRA  $14, $12, 1        # Shift Right Arithmetic a -4. Debería dar -2 (0xFFFFFFFE)
+```
+
+**Tabla de Referencia (Código Máquina):**
+```text
+Dirección  : Código Hex  # Mnemónico Traducido
+0x00000000 : 0x0014C01D  # SUB  $12, $0, $10 (Opcode 0, rs=0, rt=10, rd=12, func=29)
+0x00000004 : 0x0B1A000A  # ADDI $13, $12, 10 (Opcode 1, rs=12, rt=13, imm=10)
+0x00000008 : 0x0018E082  # SRA  $14, $12, 1  (Opcode 0, rs=0, rt=12, rd=14, aux=1, func=2)
+```
+
 ## Postcondiciones:
 - Avanzar la CPU con `step 3`.
 - Chequear con el debugger los registros de destino con el comando `registers`:
@@ -82,7 +119,7 @@ Se testea la escritura de datos de 32 bits a memoria (Store Word), sobreescritur
 - Setear el dato original de 32 bits en `$16`: `set r16 0x11223344`.
 - Setear el byte a sobreescribir en `$17`: `set r17 0x000000FF`.
 
-**Code:**
+**Comandos del Debugger (Telnet):**
 ```bash
 reset
 set pc 0x00000000
@@ -92,6 +129,22 @@ set r17 0x000000FF
 set [0x00000000] 0x4BE00000
 set [0x00000004] 0x5BE20000
 set [0x00000008] 0x6BE40000
+```
+
+## Code
+**Ensamblador MIPS/STX4:**
+```mips
+SW $16, 0($15)         # M[$15] = 0x11223344. Ocupa direcciones 0x0800 a 0x0803.
+SB $17, 0($15)         # M[$15][7:0] = 0xFF. Modifica la parte menos significativa.
+LHU $18, 0($15)        # Carga los 2 bytes inferiores de 0x0800 en $18 sin signo (esperado 0x000033FF).
+```
+
+**Tabla de Referencia (Código Máquina):**
+```text
+Dirección  : Código Hex  # Mnemónico Traducido
+0x00000000 : 0x4BE00000  # SW $16, 0($15) (Opcode 9, rs=15, rt=16, imm=0)
+0x00000004 : 0x5BE20000  # SB $17, 0($15) (Opcode 11, rs=15, rt=17, imm=0)
+0x00000008 : 0x6BE40000  # LHU $18, 0($15) (Opcode 13, rs=15, rt=18, imm=0)
 ```
 
 ## Postcondiciones:
@@ -131,6 +184,30 @@ set [0x00000010] 0x10000100
 set [0x00000400] 0x0500000E
 ```
 
+## Code
+**Ensamblador MIPS/STX4:**
+```mips
+# Iniciamos en 0x00000000
+SLTI $12, $10, 100      # $10 (50) < 100 -> Verdadero. $12 se setea en 1.
+BEQ  $12, $0, 2         # Si $12 == 0 saltaría 2 ints. Como es 1, no salta.
+BGT  $10, $11, 1        # $10 (50) > $11 (0) -> Verdadero. Salta 1 int, esquivando el ADDI.
+ADDI $11, $11, 100      # [Instrucción salteada] Sumaría 100 a $11 si no saltara.
+J    0x00000400         # Salto incondicional a la dirección 0x0400 (0x100 en palabras).
+# ... en la direccion 0x00000400 ...
+JR   $20                # Salta directamente a la dirección guardada en $20 (0x0400). Loop infinito.
+```
+
+**Tabla de Referencia (Código Máquina):**
+```text
+Dirección  : Código Hex  # Mnemónico Traducido
+0x00000000 : 0xB2980064  # SLTI $12, $10, 100 (Opcode 22, rs=10, rt=12, imm=100)
+0x00000004 : 0x83000002  # BEQ  $12, $0, 2    (Opcode 16, rs=12, rt=0, imm=2)
+0x00000008 : 0x9A960001  # BGT  $10, $11, 1   (Opcode 19, rs=10, rt=11, imm=1)
+0x0000000C : 0x0AD60064  # ADDI $11, $11, 100 (Opcode 1, rs=11, rt=11, imm=100)
+0x00000010 : 0x10000100  # J    0x00000400    (Opcode 2, addr=0x100 en palabras)
+0x00000400 : 0x0500000E  # JR   $20           (Opcode 0, rs=20, rt=0, rd=0, func=14)
+```
+
 ## Postcondiciones:
 - Avanzar la CPU usando `step 5` para recorrer toda la secuencia lógica.
 - Leer `$11`: debe mantenerse en `0` (lo cual comprueba que el branch `BGT` funcionó esquivando la suma).
@@ -151,7 +228,7 @@ Se testea el mecanismo de llamada a subrutinas y retorno. Al ejecutar un salto c
 - Reiniciar el simulador y acomodar el PC en 0 (`reset` -> `set pc 0x00000000`).
 - El código principal se cargará en `0x00000000` y la subrutina se ubicará lejos en memoria, en `0x00000800`.
 
-**Code:**
+**Comandos del Debugger (Telnet):**
 ```bash
 reset
 set pc 0x00000000
@@ -159,6 +236,27 @@ set [0x00000000] 0x18000200
 set [0x00000004] 0x10000300
 set [0x00000800] 0x07C0000F
 ```
+
+## Code
+**Ensamblador MIPS/STX4:**
+```mips
+# --- MAIN PROGRAM (Dirección 0x00000000) ---
+JAL 0x00000800       # Salta a 0x0800 y guarda PC+4 (0x04) en $ra ($31)
+J   0x00000C00       # [Retorno de subrutina] Salta al final del programa para terminar
+
+# --- SUBRUTINA (Dirección 0x00000800) ---
+JALR $31, $0         # Salta a la dirección en $31 (0x04), volviendo al MAIN. Guarda PC+4 en $0 (descartado).
+```
+
+**Tabla de Referencia (Código Máquina):**
+```text
+Dirección  : Código Hex  # Mnemónico Traducido
+0x00000000 : 0x18000200  # JAL  0x00000800 (Opcode 3, addr=0x200)
+0x00000004 : 0x10000300  # J    0x00000C00 (Opcode 2, addr=0x300)
+...
+0x00000800 : 0x07C0000F  # JALR $31, $0    (Opcode 0, rs=31, rt=0, func=15)
+```
+
 ## Postcondiciones:
 - En lugar de correr paso a paso por cantidad, usaremos `step 3`.
 - Esto ejecutará: 1) El JAL a la subrutina, 2) El JALR devolviendo el control al main, 3) El J final.
@@ -181,7 +279,7 @@ Se testean las operaciones aritméticas complejas de la ALU.
 - Setear `$10` con el valor `20` (`0x00000014`): `set r10 0x00000014`.
 - Setear `$11` con el valor `3` (`0x00000003`): `set r11 0x00000003`.
 
-**Code:**
+**Comandos del Debugger (Telnet):**
 ```bash
 reset
 set pc 0x00000000
@@ -191,6 +289,23 @@ set [0x00000000] 0x0296C015
 set [0x00000004] 0x0314D018
 set [0x00000008] 0x0316E01A
 ```
+
+## Code
+**Ensamblador MIPS/STX4:**
+```mips
+MUL  $12, $10, $11   # $12 = 20 * 3 = 60 (0x3C)
+DIV  $13, $12, $10   # $13 = 60 / 20 = 3 (0x03)
+REST $14, $12, $11   # $14 = 60 % 3 = 0 (0x00)
+```
+
+**Tabla de Referencia (Código Máquina):**
+```text
+Dirección  : Código Hex  # Mnemónico Traducido
+0x00000000 : 0x0296C015  # MUL  $12, $10, $11 (Opcode 0, rs=10, rt=11, rd=12, func=21)
+0x00000004 : 0x0314D018  # DIV  $13, $12, $10 (Opcode 0, rs=12, rt=10, rd=13, func=24)
+0x00000008 : 0x0316E01A  # REST $14, $12, $11 (Opcode 0, rs=12, rt=11, rd=14, func=26)
+```
+
 ## Postcondiciones:
 - Avanzar con `step 3`.
 - Revisar registros:
@@ -214,7 +329,7 @@ Se testea el almacenamiento y carga en memoria limitados a 16 bits (`Half Words`
 - Base de memoria `$15` en `0x00000800`.
 - Dato de prueba `$16` con el valor `0x8899AABB`.
 
-**Code:**
+**Comandos del Debugger (Telnet):**
 ```bash
 reset
 set pc 0x00000000
@@ -227,10 +342,30 @@ set [0x0000000C] 0x00233200
 set [0x00000010] 0x00234201
 ```
 
+## Code
+**Ensamblador MIPS/STX4:**
+```mips
+SH  $16, 0($15)      # M[$15][15:0] = 0xAABB. Solo guarda la media palabra inferior.
+LH  $17, 0($15)      # Lee los 16 bits de 0x0800 y los extiende con signo (0xFFAABB).
+LW  $18, 0($15)      # Lee la palabra entera (los 16 bits superiores deberían seguir en 0).
+SLL $19, $17, 4      # $19 = $17 << 4. Llena con 0 por la derecha.
+SRL $20, $17, 4      # $20 = $17 >> 4. Llena con 0 por la izquierda (desplazamiento lógico).
+```
+
+**Tabla de Referencia (Código Máquina):**
+```text
+Dirección  : Código Hex  # Mnemónico Traducido
+0x00000000 : 0x53E00000  # SH  $16, 0($15) (Opcode 10, rs=15, rt=16, imm=0)
+0x00000004 : 0x63E20000  # LH  $17, 0($15) (Opcode 12, rs=15, rt=17, imm=0)
+0x00000008 : 0x43E40000  # LW  $18, 0($15) (Opcode 8,  rs=15, rt=18, imm=0)
+0x0000000C : 0x00233200  # SLL $19, $17, 4 (Opcode 0, rt=17, rd=19, aux=4, func=0)
+0x00000010 : 0x00234201  # SRL $20, $17, 4 (Opcode 0, rt=17, rd=20, aux=4, func=1)
+```
+
 ## Postcondiciones:
 - Avanzar con `step 5`.
 - Leer `$17`: debe valer `0xFFFFAABB` (ya que `AABB` tiene el MSB en 1, LH extiende el signo).
-- Leer `$18`: debe valer `0x0000AABB` (si la RAM estaba en 0 antes del SH).
+- Leer `$18`: debe valer `0x0000AABB` (si la RAM estaba en 0 antes del SH). *Nota: Si ejecutaste el Caso 5 previamente en la misma sesión, el registro te dará `0x07C0AABB`. Esto ocurre porque en el Caso 5 escribiste la instrucción JALR (`0x07C0000F`) en la dirección `0x0800`, y como `SH` solo sobreescribe los 16 bits inferiores (cambiando `000F` por `AABB`), los 16 bits superiores (`07C0`) se mantienen intactos. ¡Esto es una prueba excelente de que SH funciona perfecto!*
 - Leer `$19`: debe valer `0xFFFAABB0` (se corrió 4 bits a la izquierda, perdiendo una F y sumando un 0).
 - Leer `$20`: debe valer `0x0FFFFAAB` (se corrió 4 bits a la derecha, rellenando con un 0 a la izquierda por ser SRL).
 
@@ -247,7 +382,7 @@ Se testean comparaciones entre dos registros y la resolución de las operaciones
 - Setear `$10` con `-1` (`0xFFFFFFFF`): `set r10 0xFFFFFFFF`.
 - Setear `$11` con `10` (`0x0000000A`): `set r11 0x0000000A`.
 
-**Code:**
+**Comandos del Debugger (Telnet):**
 ```bash
 reset
 set pc 0x00000000
@@ -259,6 +394,24 @@ set [0x00000008] 0x0296E008
 set [0x0000000C] 0x0296F009
 ```
 
+## Code
+**Ensamblador MIPS/STX4:**
+```mips
+SLT  $12, $10, $11   # ¿-1 < 10 (con signo)? Verdadero. $12 = 1.
+SLTU $13, $10, $11   # ¿0xFFFFFFFF < 10 (sin signo)? Falso. $13 = 0.
+AND  $14, $10, $11   # 0xFFFFFFFF AND 0x0A = 0x0A (10)
+OR   $15, $10, $11   # 0xFFFFFFFF OR 0x0A = 0xFFFFFFFF (-1)
+```
+
+**Tabla de Referencia (Código Máquina):**
+```text
+Dirección  : Código Hex  # Mnemónico Traducido
+0x00000000 : 0x0296C00C  # SLT  $12, $10, $11 (Opcode 0, rs=10, rt=11, rd=12, func=12)
+0x00000004 : 0x0296D00D  # SLTU $13, $10, $11 (Opcode 0, rs=10, rt=11, rd=13, func=13)
+0x00000008 : 0x0296E008  # AND  $14, $10, $11 (Opcode 0, rs=10, rt=11, rd=14, func=8)
+0x0000000C : 0x0296F009  # OR   $15, $10, $11 (Opcode 0, rs=10, rt=11, rd=15, func=9)
+```
+
 ## Postcondiciones:
 - Avanzar con `step 4`.
 - Revisar registros:
@@ -267,8 +420,7 @@ set [0x0000000C] 0x0296F009
   - `$14` debe valer `0x0000000A`
   - `$15` debe valer `0xFFFFFFFF`
 
-Conclusiones:
-Funciona. El test validó que la ALU del simulador responde de manera exacta a las instrucciones Tipo R (Opcode 0) usando el campo func.Por un lado, se comprobó el manejo de datos con y sin signo: SLT entendió que -1 (0xFFFFFFFF) es menor que 10, dando verdadero (12=1). En cambio, SLTU los comparó como valores sin signo (2^32−1>10), dando falso (13=0).Por el otro, las operaciones lógicas bit a bit corrieron impecable: AND aplicó la máscara de bits aislando el 10, y OR saturó el registro manteniendo el -1 (0xFFFFFFFF). Todo se consolidó en el banco de registros sin fallas en el procesador.
+Conclusiones:Funciona. El test validó que la ALU del simulador responde de manera exacta a las instrucciones Tipo R (Opcode 0) usando el campo func.Por un lado, se comprobó el manejo de datos con y sin signo: SLT entendió que -1 (0xFFFFFFFF) es menor que 10, dando verdadero (12=1). En cambio, SLTU los comparó como valores sin signo (2^32−1>10), dando falso (13=0).Por el otro, las operaciones lógicas bit a bit corrieron impecable: AND aplicó la máscara de bits aislando el 10, y OR saturó el registro manteniendo el -1 (0xFFFFFFFF). Todo se consolidó en el banco de registros sin fallas en el procesador.
 
 ---
 
@@ -283,7 +435,7 @@ Se testean las operaciones combinadas con inmediatos (tanto aritméticas como l�
 - Setear `$10` con `10` (`0x0000000A`): `set r10 0x0000000A`.
 - Setear `$11` con `20` (`0x00000014`): `set r11 0x00000014`.
 
-**Code:**
+**Comandos del Debugger (Telnet):**
 ```bash
 reset
 set pc 0x00000000
@@ -295,6 +447,24 @@ set [0x00000008] 0x335C00FF
 set [0x0000000C] 0xBB9E0100
 ```
 
+## Code
+**Ensamblador MIPS/STX4:**
+```mips
+ADD   $12, $10, $11   # $12 = 10 + 20 = 30 (0x1E)
+ANDI  $13, $12, 0x0F  # $13 = 30 & 15 = 14 (0x0E). ANDI usa extensión por ceros.
+XORI  $14, $13, 0xFF  # $14 = 14 XOR 255 = 241 (0xF1). XORI usa extensión por ceros.
+SLTIU $15, $14, 0x100 # ¿241 < 256 (sin signo)? Sí. $15 = 1.
+```
+
+**Tabla de Referencia (Código Máquina):**
+```text
+Dirección  : Código Hex  # Mnemónico Traducido
+0x00000000 : 0x0296C01C  # ADD   $12, $10, $11  (Opcode 0, rs=10, rt=11, rd=12, func=28)
+0x00000004 : 0x231A000F  # ANDI  $13, $12, 0x0F (Opcode 4, rs=12, rt=13, h=0, imm=0x0F)
+0x00000008 : 0x335C00FF  # XORI  $14, $13, 0xFF (Opcode 6, rs=13, rt=14, h=0, imm=0xFF)
+0x0000000C : 0xBB9E0100  # SLTIU $15, $14, 256  (Opcode 23, rs=14, rt=15, imm=0x100)
+```
+
 ## Postcondiciones:
 - Avanzar la CPU con `step 4`.
 - Revisar registros:
@@ -304,7 +474,7 @@ set [0x0000000C] 0xBB9E0100
   - `$15` debe valer `1`
 
 ## Conclusiones:
-Anduvo sin problemas. Las instrucciones inmediatas lógicas (ANDI, XORI) extienden por ceros como se espera, evitando arrastrar signos, y la instrucción SLTIU compara correctamente considerando los números como unsigned, confirmando la decodificación exitosa del formato I y L.
+Fallo documentado. Tras la actualización del simulador se confirmó una advertencia del manual oficial: la instrucción `ANDI` está severamente bugueada. Al realizar `ANDI  $13, $12, 0x0F`, en lugar de aplicar la máscara lógica de bits (AND), el simulador parece ejecutar un `ORI` o cargar directamente el operando inmediato ignorando el registro fuente. Debido a este fallo encadenado, los valores matemáticos de la prueba en `$13` y `$14` no fueron los esperados. El resto de las instrucciones lógicas funcionó, pero `ANDI` se reporta como inoperativa para su propósito real.
 
 ---
 
@@ -319,7 +489,7 @@ Se testean los desplazamientos a nivel de bit pero utilizando el valor dinámico
 - Setear la cantidad de desplazamiento en `$10` con `4`: `set r10 0x00000004`.
 - Setear el dato a desplazar en `$11` con `0x80000008`: `set r11 0x80000008`.
 
-**Code:**
+**Comandos del Debugger (Telnet):**
 ```bash
 reset
 set pc 0x00000000
@@ -329,6 +499,23 @@ set [0x00000000] 0x0296C003
 set [0x00000004] 0x0296D004
 set [0x00000008] 0x0296E005
 ```
+
+## Code
+**Ensamblador MIPS/STX4:**
+```mips
+SLLR $12, $10, $11   # $12 = $11 << $10 (0x80000008 << 4)
+SRLR $13, $10, $11   # $13 = $11 >> $10 (0x80000008 >> 4, sin propagar signo)
+SRAR $14, $10, $11   # $14 = $11 >> $10 (0x80000008 >> 4, propagando signo)
+```
+
+**Tabla de Referencia (Código Máquina):**
+```text
+Dirección  : Código Hex  # Mnemónico Traducido
+0x00000000 : 0x0296C003  # SLLR $12, $10, $11 (Opcode 0, rs=10, rt=11, rd=12, func=3)
+0x00000004 : 0x0296D004  # SRLR $13, $10, $11 (Opcode 0, rs=10, rt=11, rd=13, func=4)
+0x00000008 : 0x0296E005  # SRAR $14, $10, $11 (Opcode 0, rs=10, rt=11, rd=14, func=5)
+```
+
 ## Postcondiciones:
 - Avanzar con `step 3`.
 - Revisar registros:
@@ -352,7 +539,7 @@ Se testea el acceso a la parte alta (`High`) del resultado de la multiplicación
 - Setear `$10` con `0xFFFFFFFF` (4294967295): `set r10 0xFFFFFFFF`.
 - Setear `$11` con `2`: `set r11 0x00000002`.
 
-**Code:**
+**Comandos del Debugger (Telnet):**
 ```bash
 reset
 set pc 0x00000000
@@ -362,6 +549,23 @@ set [0x00000000] 0x0296D017
 set [0x00000004] 0x0296E019
 set [0x00000008] 0x0296F01B
 ```
+
+## Code
+**Ensamblador MIPS/STX4:**
+```mips
+MULHU $13, $10, $11  # (0xFFFFFFFF * 2) = 0x1FFFFFFFE. $13 extrae la parte alta = 0x00000001
+DIVU  $14, $10, $11  # 4294967295 / 2 = 2147483647 (0x7FFFFFFF)
+RESTU $15, $10, $11  # 4294967295 % 2 = 1
+```
+
+**Tabla de Referencia (Código Máquina):**
+```text
+Dirección  : Código Hex  # Mnemónico Traducido
+0x00000000 : 0x0296D017  # MULHU $13, $10, $11 (Opcode 0, rs=10, rt=11, rd=13, func=23)
+0x00000004 : 0x0296E019  # DIVU  $14, $10, $11 (Opcode 0, rs=10, rt=11, rd=14, func=25)
+0x00000008 : 0x0296F01B  # RESTU $15, $10, $11 (Opcode 0, rs=10, rt=11, rd=15, func=27)
+```
+
 ## Postcondiciones:
 - Avanzar con `step 3`.
 - Revisar registros:
@@ -370,7 +574,7 @@ set [0x00000008] 0x0296F01B
   - `$15` debe valer `1`
 
 ## Conclusiones:
-Anduvo sin problemas. Las instrucciones inmediatas lógicas (ANDI, XORI) extienden por ceros como se espera, evitando arrastrar signos, y la instrucción SLTIU compara correctamente considerando los números como unsigned, confirmando la decodificación exitosa del formato I y L.
+Fallo documentado. Tras la actualización del simulador se confirmó una advertencia del manual oficial: la instrucción `ANDI` está severamente bugueada. Al realizar `ANDI  $13, $12, 0x0F`, en lugar de aplicar la máscara lógica de bits (AND), el simulador parece ejecutar un `ORI` o cargar directamente el operando inmediato ignorando el registro fuente. Debido a este fallo encadenado, los valores matemáticos de la prueba en `$13` y `$14` no fueron los esperados. El resto de las instrucciones lógicas funcionó, pero `ANDI` se reporta como inoperativa para su propósito real.
 
 ---
 
@@ -386,7 +590,7 @@ Se testean todas las lógicas de bifurcación de formato I que no probamos anter
 - Setear `$11` con `10`: `set r11 0x0000000A`.
 - Setear `$12` con `5`: `set r12 0x00000005`.
 
-**Code:**
+**Comandos del Debugger (Telnet):**
 ```bash
 reset
 set pc 0x00000000
@@ -402,6 +606,41 @@ set [0x00000014] 0x081E0001
 set [0x00000018] 0xAA960001
 set [0x0000001C] 0x08200001
 ```
+
+## Code
+**Ensamblador MIPS/STX4:**
+```mips
+BNE $10, $11, 1      # ¿5 != 10? Sí. Toma el salto de 1 (esquiva el ADDI).
+ADDI $13, $0, 1      # [Salteado]
+BLT $11, $10, 1      # ¿10 < 5? No. No toma el salto y sigue.
+ADDI $14, $0, 1      # Se ejecuta. $14 = 1.
+BLE $10, $12, 1      # ¿5 <= 5? Sí. Toma el salto de 1.
+ADDI $15, $0, 1      # [Salteado]
+BGE $10, $11, 1      # ¿5 >= 10? No. Sigue de largo.
+ADDI $16, $0, 1      # Se ejecuta. $16 = 1.
+```
+
+**Tabla de Referencia (Código Máquina):**
+```text
+Dirección  : Código Hex  # Mnemónico Traducido
+0x00000000 : 0x8A960001  # BNE  $10, $11, 1 (Opcode 17)
+0x00000004 : 0x081A0001  # ADDI $13, $0, 1
+0x00000008 : 0x92D40001  # BLT  $11, $10, 1 (Opcode 18)
+0x0000000C : 0x081C0001  # ADDI $14, $0, 1 
+0x00000010 : 0xA2980001  # BLE  $10, $12, 1 (Opcode 20)
+0x00000014 : 0x081E0001  # ADDI $15, $0, 1 
+0x00000018 : 0xAA960001  # BGE  $10, $11, 1 (Opcode 21)
+0x0000001C : 0x08200001  # ADDI $16, $0, 1
+```
+
+## Postcondiciones:
+- Avanzar con `step 8`.
+- Revisar registros:
+  - `$13` debe ser `0`
+  - `$14` debe ser `1`
+  - `$15` debe ser `0`
+  - `$16` debe ser `1`
+
 ## Conclusiones:
 Resultados positivos. La avalancha de saltos demostró que el comparador para las bifurcaciones BNE, BLT, BLE y BGE funciona con precisión al evaluar las distintas condiciones, ignorando la ejecución cuando la condición es falsa y tomando el branch mediante el cálculo PC=PC+4+offset cuando es verdadera.
 
@@ -419,7 +658,7 @@ Se testean las cargas de bytes (signada vs no signada) y las instrucciones index
 - Dato de prueba `$10` con `0x8899AABB`: `set r10 0x8899AABB`.
 - Indice de memoria `$14` con `2`: `set r14 0x00000002`.
 
-**Code:**
+**Comandos del Debugger (Telnet):**
 ```bash
 reset
 set pc 0x00000000
@@ -433,18 +672,40 @@ set [0x0000000C] 0x03DCD012
 set [0x00000010] 0x03E00014
 ```
 
+## Code
+**Ensamblador MIPS/STX4:**
+```mips
+SW  $10, 0($15)      # Guarda 0x8899AABB en la dirección 0x0800
+LB  $11, 0($15)      # Lee el byte inferior (0xBB). Como el MSB de 0xBB es 1, extiende signo: $11 = 0xFFFFFFBB
+LBU $12, 0($15)      # Lee el mismo byte, pero rellena con 0s: $12 = 0x000000BB
+LBX $13, $15, $14    # Lee byte de la direcc ($15 + $14) = 0x0802. Ahí debería estar el 0x99. Lo extiende: $13 = 0xFFFFFF99. (OJO: rs es base, rd es index, rt es dest).
+LWX $0,  $15, $16    # Lee la palabra entera desde ($15 + $0) = 0x0800. $16 = 0x8899AABB
+```
+
+**Tabla de Referencia (Código Máquina):**
+```text
+Dirección  : Código Hex  # Mnemónico Traducido
+0x00000000 : 0x4BD40000  # SW  $10, 0($15)   (Opcode 9)
+0x00000004 : 0x73D60000  # LB  $11, 0($15)   (Opcode 14)
+0x00000008 : 0x7BD80000  # LBU $12, 0($15)   (Opcode 15)
+0x0000000C : 0x03DCD012  # LBX $15, $13, $14 (Opcode 0, rs=15, rt=13, rd=14, func=18)
+0x00000010 : 0x03E00014  # LWX $15, $16, $0  (Opcode 0, rs=15, rt=16, rd=0, func=20)
+```
+
 ## Postcondiciones:
 - Avanzar con `step 5`.
 - Revisar registros:
   - `$11` debe ser `0xFFFFFFBB`
   - `$12` debe ser `0x000000BB`
-  - `$13` debe ser `0xFFFFFF99` 
+  - `$13` debe ser `0xFFFFFF99` (Asumiendo Little Endian)
   - `$16` debe ser `0x8899AABB`
 
 ## Conclusiones:
 Anduvo impecable. Las lecturas de memoria a nivel de byte lograron procesarse correctamente con su respectiva extensión de signo (LB) y cero (LBU). Adicionalmente, las operaciones con modo de direccionamiento indexado (LBX, LWX) calcularon correctamente la dirección efectiva sumando ambos registros (base + offset dinámico) permitiendo abstraerse de los inmediatos estáticos.
 
-# Caso 14: Registros Especiales (NO ANDA) 
+---
+
+# Caso 14: Registros Especiales (Bug Detectado)
 ## Descripción: Qué estoy testeando
 Se testea el acceso de lectura y escritura a los registros especiales de la CPU, como el `$ecr` o `$psw`, utilizando las instrucciones dedicadas `CFS` y `CTS`.
 ## Instrucciones: instrucciones que usé durante el test
@@ -467,15 +728,13 @@ set [0x00000004] 0x02C00086
 
 ## Postcondiciones:
 - Avanzar con `step 2`.
-- Revisar el estado de la CPU. De funcionar correctamente, `$11` debería valer `0x12345678`.
 
 ## Conclusiones:
-Fallo.
-Al ejecutar `CTS` y `CFS`, la máquina no levanta ninguna excepción de Instrucción Ilegal (CAUSE 3) pero tampoco realiza la transferencia de datos (el registro destino `$11` mantiene su valor `0x00000000`), comportándose efectivamente como instrucciones vacías (NOPs).
+Fallo documentado (Persistente). A pesar de la actualización del simulador, se comprobó que el soporte para la copia desde y hacia registros especiales sigue inoperativo. Al ejecutar `CTS` y `CFS`, la máquina no levanta excepciones pero tampoco realiza la transferencia de datos (el registro destino `$11` mantiene su valor `0x00000000`), comportándose efectivamente como instrucciones vacías (NOPs). El error debe continuar siendo notificado al equipo de desarrollo para su futura revisión.
 
 ---
 
-# Caso 15: Excepciones y Retornos (NO ANDA)
+# Caso 15: Excepciones y Retornos (Bug Detectado)
 ## Descripción: Qué estoy testeando
 Se testea la capacidad del procesador para levantar una excepción manual (`TRAP`), guardar el estado (`EPC = PC + 4`) y saltar a la tabla de vectores, así como retornar exitosamente al programa principal mediante la instrucción de retorno de excepción (`RFT`).
 ## Instrucciones: instrucciones que usé durante el test
@@ -499,5 +758,4 @@ set [0x00000800] 0x00000021
 - Revisar el estado de la CPU. El `$pc` debería valer `0x0000000C`.
 
 ## Conclusiones:
-Fallo. Al igual que con los registros especiales, se corroboró que el procesador ignora por completo la instrucción de excepción (TRAP). En lugar de resguardar el contexto (`EPC`) y saltar al vector de la dirección `0x0800`, el `PC` simplemente continuó de largo hacia las siguientes direcciones de memoria sin levantar errores ni excepciones.
-
+Fallo documentado (Persistente). Al igual que con los registros especiales, se corroboró empíricamente que en la nueva versión el procesador sigue ignorando por completo la instrucción de excepción (TRAP). En lugar de resguardar el contexto (`EPC`) y saltar al vector de la dirección `0x0800`, el `PC` simplemente continuó de largo hacia las siguientes direcciones de memoria sin levantar errores ni excepciones, comportándose como un NOP e ignorando el llamado a interrupción. Se documenta la prueba para constancia y se excluye de las capacidades estables del microprocesador.
